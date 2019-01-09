@@ -1,6 +1,4 @@
 ﻿using AntiCaptcha.CreateTask;
-using AntiCaptcha.GetBalance;
-using AntiCaptcha.GetQueueStats;
 using AntiCaptcha.GetTask;
 using Newtonsoft.Json;
 using System.Collections.Generic;
@@ -8,22 +6,16 @@ using System.Linq;
 using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
-using System.Timers;
 
 namespace AntiCaptcha
 {
     public class AntiCaptchaKey
     {
-        private readonly Timer _timer;
         private readonly HashSet<CreateTaskResponse> _tasks;
         private readonly object _taskLockObject;
         public string ClientKey { get; }
         [JsonIgnore]
-        public bool IsReady => AntiCaptchaBalance.Balance > 0 && AntiCaptchaQueueStats.Waiting > 0 && AntiCaptchaQueueStats.Bid <= 0.003;
-        public GetBalanceResponse AntiCaptchaBalance { get; private set; }
-
-        [JsonIgnore]
-        public GetQueueStatsResponse AntiCaptchaQueueStats => AntiCaptchaGlobals.GetStatsForSelectedQueue();
+        public bool IsReady => true;
 
         [JsonIgnore]
         public CreateTaskResponse[] Tasks
@@ -68,35 +60,12 @@ namespace AntiCaptcha
 
             _taskLockObject = new object();
             _tasks = new HashSet<CreateTaskResponse>();
-            _timer = new Timer(1000);
-            _timer.Elapsed += _timer_Elapsed;
-            _timer.Enabled = true;
-            _timer_Elapsed(null, null);
         }
 
-
-
-
-        private async void _timer_Elapsed(object sender, ElapsedEventArgs e)
-        {
-            _timer.Stop();
-            try
-            {
-                AntiCaptchaBalance = await GetKeyBalance(ClientKey);
-            }
-            catch
-            {
-                //ignored
-            }
-
-            _timer.Start();
-        }
 
         public async Task<GetTaskResponse> GetSolvedCaptcha(ICreateTask createTask)
         {
-            AntiCaptchaQueueStats.DecrementWaiting();
-
-            var createTaskResponse = await CreateCaptchaTask(this, createTask);
+            var createTaskResponse = await CreateCaptchaTask(this, createTask).ConfigureAwait(false);
 
             lock (_taskLockObject)
                 _tasks.Add(createTaskResponse);
@@ -111,8 +80,8 @@ namespace AntiCaptcha
 
             while (createTaskResponse.TaskResponse == null || createTaskResponse.TaskResponse.Status.Equals("processing"))
             {
-                await Task.Delay(10000);
-                createTaskResponse.TaskResponse = await GetCaptchaTask(this, createTaskResponse);
+                await Task.Delay(10000).ConfigureAwait(false);
+                createTaskResponse.TaskResponse = await GetCaptchaTask(this, createTaskResponse).ConfigureAwait(false);
 
                 if (createTaskResponse.TaskResponse == null || createTaskResponse.TaskResponse.ErrorId <= 0) continue;
 
@@ -130,10 +99,10 @@ namespace AntiCaptcha
             using (var httpRequest = new HttpRequestMessage(HttpMethod.Post, AntiCaptchaEndpoints.CreateTaskUrl))
             {
                 httpRequest.Content = new StringContent(requestJson, Encoding.UTF8, "application/json");
-                using (var httpResponse = await AntiCaptchaGlobals.HttpClient.SendAsync(httpRequest))
+                using (var httpResponse = await AntiCaptchaGlobals.HttpClient.SendAsync(httpRequest).ConfigureAwait(false))
                 {
                     httpResponse.EnsureSuccessStatusCode();
-                    var value = await httpResponse.Content.ReadAsStringAsync();
+                    var value = await httpResponse.Content.ReadAsStringAsync().ConfigureAwait(false);
                     var ret = JsonConvert.DeserializeObject<CreateTaskResponse>(value);
                     return ret;
                 }
@@ -148,10 +117,10 @@ namespace AntiCaptcha
                 using (var httpRequest = new HttpRequestMessage(HttpMethod.Post, AntiCaptchaEndpoints.GetTaskUrl))
                 {
                     httpRequest.Content = new StringContent(requestJson, Encoding.UTF8, "application/json");
-                    using (var httpResponse = await AntiCaptchaGlobals.HttpClient.SendAsync(httpRequest))
+                    using (var httpResponse = await AntiCaptchaGlobals.HttpClient.SendAsync(httpRequest).ConfigureAwait(false))
                     {
                         httpResponse.EnsureSuccessStatusCode();
-                        var value = await httpResponse.Content.ReadAsStringAsync();
+                        var value = await httpResponse.Content.ReadAsStringAsync().ConfigureAwait(false);
                         var ret = JsonConvert.DeserializeObject<GetTaskResponse>(value);
                         return ret;
                     }
@@ -160,22 +129,6 @@ namespace AntiCaptcha
             catch
             {
                 return null;
-            }
-        }
-        private static async Task<GetBalanceResponse> GetKeyBalance(string clientKey)
-        {
-            var request = JsonConvert.SerializeObject(new GetBalanceRequest(clientKey));
-            using (var httpRequest = new HttpRequestMessage(HttpMethod.Post, AntiCaptchaEndpoints.GetBalanceUrl))
-            {
-                httpRequest.Content = new StringContent(request, Encoding.UTF8, "application/json");
-                using (var httpResponse = await AntiCaptchaGlobals.HttpClient.SendAsync(httpRequest))
-                {
-                    httpResponse.EnsureSuccessStatusCode();
-                    var value = await httpResponse.Content.ReadAsStringAsync();
-                    var ret = JsonConvert.DeserializeObject<GetBalanceResponse>(value);
-                    if (ret.ErrorId > 0) throw new AntiCaptchaException($"{ret.ErrorCode}:{ret.ErrorDescription}");
-                    return ret;
-                }
             }
         }
 
