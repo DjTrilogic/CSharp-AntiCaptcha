@@ -1,10 +1,10 @@
-﻿using System;
+﻿using AntiCaptcha.CreateTask;
+using AntiCaptcha.GetTask;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using AntiCaptcha.CreateTask;
-using AntiCaptcha.GetTask;
 
 namespace AntiCaptcha
 {
@@ -14,15 +14,6 @@ namespace AntiCaptcha
         private static readonly Random GetRandom;
         private static readonly ConcurrentQueue<GetTaskResponse> Queue;
 
-        public static int SolvedCaptchaCount
-        {
-            get
-            {
-                lock (CaptchaKeys)
-                    return CaptchaKeys.Sum(k => k.TotalCount - k.QueuedCount);
-            }
-        }
-    
         static AntiCaptchaLoadBalancer()
         {
             CaptchaKeys = new HashSet<AntiCaptchaKey>();
@@ -35,13 +26,6 @@ namespace AntiCaptcha
             lock (CaptchaKeys)
             {
                 return CaptchaKeys.Add(antiCaptchaKey);
-            }
-        }
-        public static bool RemoveKey(AntiCaptchaKey antiCaptchaKey)
-        {
-            lock (CaptchaKeys)
-            {
-                return CaptchaKeys.Remove(antiCaptchaKey);
             }
         }
         public static AntiCaptchaKey GetValidAntiCaptchaKey()
@@ -69,11 +53,6 @@ namespace AntiCaptcha
             return ret;
         }
 
-        public static void EnqueueResponse(GetTaskResponse response)
-        {
-            if(!Queue.Contains(response))
-                Queue.Enqueue(response);
-        }
         public static async Task<GetTaskResponse> GetSolvedCaptcha(ICreateTask task)
         {
             GetTaskResponse ret;
@@ -94,7 +73,7 @@ namespace AntiCaptcha
             return ret;
         }
 
-    
+
 
         private static int GetRandomNumber(int min, int max)
         {
